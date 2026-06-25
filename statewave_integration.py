@@ -39,7 +39,14 @@ STATEWAVE_API_KEY:  str = os.getenv("STATEWAVE_API_KEY", "")
 OPENAI_MODEL:       str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 MAX_MEMORY_TOKENS:  int = int(os.getenv("STATEWAVE_MAX_TOKENS", "800"))
 
-_openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+_openai: AsyncOpenAI | None = None
+
+
+def _openai_client() -> AsyncOpenAI:
+    global _openai
+    if _openai is None:
+        _openai = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    return _openai
 
 # ── low-level Statewave helpers ───────────────────────────────────────────────
 
@@ -118,7 +125,7 @@ async def memory_chat(
         system = system_prompt
 
     # 3. Call the LLM.
-    completion = await _openai.chat.completions.create(
+    completion = await _openai_client().chat.completions.create(
         model=model,
         messages=[
             {"role": "system",  "content": system},
@@ -190,21 +197,36 @@ try:
 
                 response = await call_next(request)
 
-                if hasattr(response, "body"):
-                    resp_body = response.body
-                else:
-                    resp_body = b""
-                    async for chunk in response.body_iterator:  # type: ignore[attr-defined]
-                        resp_body += chunk
-
                 # Record episode after response (best-effort; never swallows the body).
+                if hasattr(response, "body"):
+                    try:
+                        resp_data: dict[str, Any] = _json.loads(response.body)
+                        assistant_reply: str = resp_data.get("response", "")
+                        user_id = getattr(request.state, "memory_user_id", None)
+                        message = getattr(request.state, "memory_message", None)
+                        if user_id and message and assistant_reply:
+                            await _record_episode(
+                                user_id,
+                                message,
+                                assistant_reply,
+                            )
+                    except Exception:
+                        pass
+                    return response
+
+                resp_body = b""
+                async for chunk in response.body_iterator:  # type: ignore[attr-defined]
+                    resp_body += chunk
+
                 try:
-                    resp_data: dict[str, Any] = _json.loads(resp_body)
-                    assistant_reply: str = resp_data.get("response", "")
-                    if getattr(request.state, "memory_user_id", None) and assistant_reply:
+                    resp_data = _json.loads(resp_body)
+                    assistant_reply = resp_data.get("response", "")
+                    user_id = getattr(request.state, "memory_user_id", None)
+                    message = getattr(request.state, "memory_message", None)
+                    if user_id and message and assistant_reply:
                         await _record_episode(
-                            request.state.memory_user_id,
-                            request.state.memory_message,
+                            user_id,
+                            message,
                             assistant_reply,
                         )
                 except Exception:
