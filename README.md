@@ -144,7 +144,17 @@ Everything else has sensible defaults. A full list of available variables is in 
 
 ### Step 3: Start Statewave locally
 
-Statewave is a separate server that runs alongside your application. Clone and start it with Docker:
+Statewave is a separate server that runs alongside your application. It's fully open source ([Apache-2.0](https://github.com/smaramwbc/statewave)) — pick whichever way you want to run it:
+
+**Fastest — one line to a running server:**
+
+```bash
+npx @statewavedev/statewave
+```
+
+This boots the same open-source Statewave server (API, admin console, and Postgres) locally and wires it into your MCP clients. Equivalent one-liner: `curl -fsSL https://www.statewave.ai/install | sh`.
+
+**Prefer to run it yourself from source?** Clone and start it with Docker Compose:
 
 ```bash
 # In a new terminal window or tab, go up one level from this repo
